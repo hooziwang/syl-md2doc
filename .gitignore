@@ -2,3 +2,4 @@
 .gocache/
 bin/
 *.docx
+!internal/convert/templates/default-reference.docx

@@ -54,7 +54,9 @@ func TestBuildSuccessWithFakePandoc(t *testing.T) {
 	require.Contains(t, stdout.String(), "\"success_count\":1")
 	require.Contains(t, stdout.String(), "\"failure_count\":0")
 	require.NotContains(t, stdout.String(), "\"pandoc_path\"")
-	require.FileExists(t, filepath.Join(outDir, "a.docx"))
+	matches, gErr := filepath.Glob(filepath.Join(outDir, "a_*.docx"))
+	require.NoError(t, gErr)
+	require.Len(t, matches, 1)
 }
 
 func TestBuildVerbosePrintPandocInfo(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,4 +72,33 @@ func TestPandocConverterMissingImageAsWarningWhenOutputExists(t *testing.T) {
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 	require.NotEmpty(t, res.Warnings)
+}
+
+func TestPandocConverterUsesEmbeddedDefaultReferenceDocx(t *testing.T) {
+	orig := execCommandContext
+	defer func() { execCommandContext = orig }()
+
+	var gotReferencePath string
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "--reference-doc=") {
+				gotReferencePath = strings.TrimPrefix(arg, "--reference-doc=")
+			}
+		}
+		return exec.CommandContext(ctx, "sh", "-c", "exit 0")
+	}
+
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "a.md")
+	dst := filepath.Join(tmp, "a.docx")
+	require.NoError(t, os.WriteFile(src, []byte("# a"), 0o644))
+
+	conv := NewPandocConverter("pandoc", "", false)
+	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
+	require.NoError(t, res.Error)
+	require.NotEmpty(t, gotReferencePath)
+
+	_, err := os.Stat(gotReferencePath)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
 }

@@ -8,9 +8,9 @@
 - 目录输入递归扫描；仅处理 `.md` 文件。
 - 一个 `.md` 对应一个 `.docx`。
 - Markdown 解析使用 `CommonMark + GFM`（通过 `pandoc`）。
-- 支持 `--reference-docx` 控制最终 Word 样式。
+- 支持 `--reference-docx` 控制最终 Word 样式；未指定时自动使用内置默认模板。
 - 批量执行时单文件失败不中断，最终汇总失败并返回非 0。
-- 同名输出自动追加 `_1/_2/...`，不会覆盖已有文件。
+- 生成文件名自动追加 6 位字母数字识别码（如 `listing_for_test_Xy12Z9.docx`），冲突时自动重生识别码。
 
 ## 安装
 
@@ -96,6 +96,7 @@ syl-md2doc version
   - 默认当前目录。
 - `--jobs, -j`: 并发数，默认 CPU 核数。
 - `--reference-docx`: Word 模板文件（传给 pandoc `--reference-doc`）。
+  - 未指定时，程序会自动使用内置默认模板（已编译进二进制）。
 - `--pandoc-path`: pandoc 可执行文件路径。
 - `--verbose`: 打印更详细执行信息。
 
@@ -103,6 +104,7 @@ syl-md2doc version
 
 - 目录输入：在输出目录下保留相对路径结构。
 - 单独文件输入：输出到输出根目录。
+- 默认生成文件名：`原文件名_6位字母数字识别码.docx`。
 - 非 `.md` 输入：忽略并输出 `warn`。
 - 本地图片缺失：记录告警并继续（若 pandoc 仍产出 docx）。
 

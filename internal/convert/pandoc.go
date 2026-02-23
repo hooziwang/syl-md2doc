@@ -3,6 +3,7 @@ package convert
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +16,9 @@ import (
 
 var execCommandContext = exec.CommandContext
 var execLookPath = exec.LookPath
+
+//go:embed templates/default-reference.docx
+var defaultReferenceDocx []byte
 
 type PandocInfo struct {
 	BinaryPath string
@@ -60,10 +64,20 @@ func (p *PandocConverter) Convert(ctx context.Context, task job.Task) job.Result
 	if bin == "" {
 		bin = "pandoc"
 	}
-	args := []string{task.SourcePath, "-f", "gfm", "-t", "docx", "-o", task.TargetPath}
-	if strings.TrimSpace(p.ReferenceDocx) != "" {
-		args = append(args, "--reference-doc="+p.ReferenceDocx)
+	refPath := strings.TrimSpace(p.ReferenceDocx)
+	if refPath == "" {
+		tmpRef, err := materializeDefaultReferenceDocx()
+		if err != nil {
+			res.Error = fmt.Errorf("准备内置 reference-docx 失败：%w", err)
+			return res
+		}
+		refPath = tmpRef
+		defer func() {
+			_ = os.Remove(tmpRef)
+		}()
 	}
+	args := []string{task.SourcePath, "-f", "gfm", "-t", "docx", "-o", task.TargetPath}
+	args = append(args, "--reference-doc="+refPath)
 
 	cmd := execCommandContext(ctx, bin, args...)
 	stderr := bytes.NewBuffer(nil)
@@ -207,4 +221,22 @@ func installHint(goos string) string {
 	default:
 		return "可执行：sudo apt-get install pandoc（或使用系统包管理器安装）"
 	}
+}
+
+func materializeDefaultReferenceDocx() (string, error) {
+	if len(defaultReferenceDocx) == 0 {
+		return "", fmt.Errorf("内置 reference-docx 为空")
+	}
+	f, err := os.CreateTemp("", "syl-md2doc-reference-*.docx")
+	if err != nil {
+		return "", fmt.Errorf("创建临时 reference-docx 失败：%w", err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	if _, err := f.Write(defaultReferenceDocx); err != nil {
+		_ = os.Remove(f.Name())
+		return "", fmt.Errorf("写入临时 reference-docx 失败：%w", err)
+	}
+	return f.Name(), nil
 }
