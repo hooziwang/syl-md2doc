@@ -7,12 +7,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"syl-md2doc/internal/job"
 )
 
 var execCommandContext = exec.CommandContext
+var execLookPath = exec.LookPath
+
+type PandocInfo struct {
+	BinaryPath string
+	Version    string
+}
 
 type PandocConverter struct {
 	PandocPath    string
@@ -24,15 +31,22 @@ func NewPandocConverter(pandocPath, referenceDocx string, verbose bool) *PandocC
 	return &PandocConverter{PandocPath: pandocPath, ReferenceDocx: referenceDocx, Verbose: verbose}
 }
 
-func EnsurePandocAvailable(pandocPath string) error {
+func EnsurePandocAvailable(pandocPath string) (PandocInfo, error) {
 	bin := strings.TrimSpace(pandocPath)
 	if bin == "" {
 		bin = "pandoc"
 	}
-	if _, err := exec.LookPath(bin); err != nil {
-		return fmt.Errorf("未找到 pandoc，可使用 --pandoc-path 指定路径，或先安装 pandoc")
+	resolved, err := execLookPath(bin)
+	if err != nil {
+		return PandocInfo{}, fmt.Errorf("未找到 pandoc（%s）。%s；也可使用 --pandoc-path 指定路径", bin, installHint(runtime.GOOS))
 	}
-	return nil
+
+	version, err := detectPandocVersion(resolved)
+	if err != nil {
+		// 不把版本解析失败当成阻断错误，保证跨平台兼容性。
+		version = ""
+	}
+	return PandocInfo{BinaryPath: resolved, Version: version}, nil
 }
 
 func (p *PandocConverter) Convert(ctx context.Context, task job.Task) job.Result {
@@ -119,4 +133,78 @@ func looksLikeMissingAsset(text string) bool {
 		}
 	}
 	return false
+}
+
+func detectPandocVersion(binPath string) (string, error) {
+	cmd := execCommandContext(context.Background(), binPath, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("执行 pandoc --version 失败：%w", err)
+	}
+	line := strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+	if line == "" {
+		return "", fmt.Errorf("读取 pandoc 版本失败：输出为空")
+	}
+	ver, ok := extractVersionToken(line)
+	if !ok {
+		return "", fmt.Errorf("无法识别 pandoc 版本：%s", line)
+	}
+	return ver, nil
+}
+
+func extractVersionToken(line string) (string, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return "", false
+	}
+	raw := strings.TrimPrefix(fields[1], "v")
+	parts := strings.Split(raw, ".")
+	if len(parts) < 2 {
+		return "", false
+	}
+	if !isDigits(parts[0]) || !isDigits(parts[1]) {
+		return "", false
+	}
+	if len(parts) == 2 {
+		return parts[0] + "." + parts[1] + ".0", true
+	}
+	patch := leadingDigits(parts[2])
+	if patch == "" {
+		return "", false
+	}
+	return parts[0] + "." + parts[1] + "." + patch, true
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func leadingDigits(s string) string {
+	var b strings.Builder
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			break
+		}
+		b.WriteRune(ch)
+	}
+	return b.String()
+}
+
+func installHint(goos string) string {
+	switch goos {
+	case "darwin":
+		return "可执行：brew install pandoc"
+	case "windows":
+		return "可执行：scoop install pandoc（或 choco install pandoc）"
+	default:
+		return "可执行：sudo apt-get install pandoc（或使用系统包管理器安装）"
+	}
 }

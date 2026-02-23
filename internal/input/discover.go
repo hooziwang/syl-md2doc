@@ -35,7 +35,7 @@ func Discover(inputs []string, cwd string) ([]SourceItem, []string, []Failure, e
 
 		st, err := os.Stat(abs)
 		if err != nil {
-			fails = append(fails, Failure{Input: raw, Reason: "输入不存在或不可访问"})
+			fails = append(fails, Failure{Input: abs, Reason: "输入不存在或不可访问"})
 			continue
 		}
 

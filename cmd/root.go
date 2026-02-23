@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
-	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"syl-md2doc/internal/app"
@@ -18,6 +18,43 @@ type buildFlags struct {
 	pandocPath    string
 	verbose       bool
 }
+
+const rootLongHelp = `将一个或多个 Markdown 文件批量转换为 Word(.docx)。
+
+输入规则：
+1. 支持多个文件、多个目录、文件与目录混合输入。
+2. 目录会递归扫描；仅处理 .md 文件，其他文件自动忽略。
+3. 一个 .md 文件对应一个 .docx 文件。
+
+输出规则：
+1. 默认输出到当前目录。
+2. 目录输入会保留相对路径结构。
+3. 同名输出自动追加后缀（_1/_2/...），避免覆盖。
+4. 成功时默认输出精简 summary；失败时输出详细诊断与修复建议。
+
+依赖规则：
+1. 依赖 pandoc 完成转换。
+2. 可用 --pandoc-path 指定 pandoc 绝对路径。
+3. 建议使用较新版本 pandoc（如 >= 2.19.0）。`
+
+const rootExamples = `  # 单文件转换（输出到当前目录）
+  syl-md2doc /abs/docs/a.md
+
+  # 多输入（文件 + 目录）
+  syl-md2doc /abs/docs/a.md /abs/docs/chapter
+
+  # 指定输出目录
+  syl-md2doc /abs/docs/chapter --output /abs/out
+
+  # 单输入时指定输出文件
+  syl-md2doc /abs/docs/a.md --output /abs/out/final.docx
+
+  # 指定模板与 pandoc 路径（建议使用绝对路径）
+  syl-md2doc /abs/docs/chapter --reference-docx /abs/template/ref.docx --pandoc-path /abs/bin/pandoc
+
+  # 查看版本（兼容两种写法）
+  syl-md2doc --version
+  syl-md2doc version`
 
 func Execute() error {
 	root := NewRootCmd(os.Stdout, os.Stderr)
@@ -32,35 +69,17 @@ func NewRootCmd(stdout io.Writer, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "syl-md2doc [inputs...]",
 		Short:         "批量将 Markdown 转为 docx",
+		Long:          rootLongHelp,
+		Example:       rootExamples,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE:          runBuild(stdout, stderr, flags, false, &showVersion),
+		RunE:          runBuild(stdout, stderr, flags, &showVersion),
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.CompletionOptions.HiddenDefaultCmd = true
 	bindBuildFlags(root, flags)
 	root.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "显示版本信息")
-
-	buildCmd := &cobra.Command{
-		Use:           "build [inputs...]",
-		Short:         "执行 Markdown 到 docx 的批量转换",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE:          runBuild(stdout, stderr, flags, true, &showVersion),
-	}
-	root.AddCommand(buildCmd)
-
-	versionCmd := &cobra.Command{
-		Use:           "version",
-		Short:         "显示版本信息",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		Run: func(cmd *cobra.Command, args []string) {
-			printVersion(stdout)
-		},
-	}
-	root.AddCommand(versionCmd)
 	return root
 }
 
@@ -72,24 +91,45 @@ func bindBuildFlags(cmd *cobra.Command, flags *buildFlags) {
 	cmd.PersistentFlags().BoolVar(&flags.verbose, "verbose", false, "输出详细日志")
 }
 
-func runBuild(stdout io.Writer, stderr io.Writer, flags *buildFlags, subcommand bool, showVersion *bool) func(*cobra.Command, []string) error {
+func runBuild(stdout io.Writer, stderr io.Writer, flags *buildFlags, showVersion *bool) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if showVersion != nil && *showVersion {
 			printVersion(stdout)
 			return nil
 		}
 		if len(args) == 0 {
-			if !subcommand {
-				fmt.Fprintln(stderr, "至少提供一个输入（文件或目录）")
-				return fmt.Errorf("至少提供一个输入")
-			}
-			_ = cmd.Help()
-			return fmt.Errorf("至少提供一个输入")
+			emitNDJSON(stderr, "error", "invalid_input", "缺少输入参数", map[string]any{
+				"required": "至少一个 .md 文件或目录",
+				"args":     args,
+			}, suggestionForTopError("至少提供一个输入"))
+			return errBuildFailed
 		}
 
 		cwd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("读取当前目录失败：%w", err)
+			emitNDJSON(stderr, "error", "cwd_read_failed", "读取当前目录失败", map[string]any{
+				"error": err.Error(),
+			}, "检查运行目录是否可访问，或在可访问目录中重试")
+			return errBuildFailed
+		}
+		start := time.Now()
+		if flags.verbose {
+			emitNDJSON(stdout, "info", "build_start", "开始执行 Markdown 转 docx", map[string]any{
+				"cwd":            cwd,
+				"inputs":         absPaths(cwd, args),
+				"output_arg":     absPath(cwd, flags.outputArg),
+				"jobs":           flags.jobs,
+				"reference_docx": absPath(cwd, flags.referenceDocx),
+				"pandoc_path":    absPath(cwd, flags.pandocPath),
+				"verbose":        flags.verbose,
+			}, "")
+		}
+
+		if flags.verbose && flags.referenceDocx != "" && !filepath.IsAbs(flags.referenceDocx) {
+			emitNDJSON(stdout, "info", "reference_docx_resolved", "已解析 reference-docx 绝对路径", map[string]any{
+				"raw":      flags.referenceDocx,
+				"resolved": absPath(cwd, flags.referenceDocx),
+			}, "")
 		}
 
 		res, err := app.Run(app.Options{
@@ -102,59 +142,77 @@ func runBuild(stdout io.Writer, stderr io.Writer, flags *buildFlags, subcommand 
 			Verbose:       flags.verbose,
 		})
 		if err != nil {
-			return err
+			emitNDJSON(stderr, "error", "build_aborted", "转换任务启动失败", map[string]any{
+				"error":  err.Error(),
+				"inputs": absPaths(cwd, args),
+			}, suggestionForTopError(err.Error()))
+			return errBuildFailed
+		}
+		if flags.verbose {
+			emitNDJSON(stdout, "info", "pandoc_environment", "pandoc 环境检测结果", map[string]any{
+				"pandoc_path":    absPath(cwd, res.PandocPath),
+				"pandoc_version": res.PandocVer,
+			}, "")
 		}
 
-		for _, w := range res.Warnings {
-			fmt.Fprintf(stderr, "warn: %s\n", w)
+		// 成功场景默认精简输出；失败或 --verbose 时输出逐条告警。
+		if flags.verbose || res.FailureCount > 0 {
+			for idx, w := range res.Warnings {
+				emitNDJSON(stderr, "warn", "warning", "处理过程中产生告警", map[string]any{
+					"index":   idx + 1,
+					"warning": w,
+				}, "根据 warning 内容检查资源路径、文件格式或输入范围")
+			}
 		}
-		for _, f := range res.Failures {
-			fmt.Fprintf(stderr, "fail: %s -> %s\n", f.Source, f.Reason)
+		for idx, f := range res.Failures {
+			emitNDJSON(stderr, "error", "file_failed", "文件转换失败", map[string]any{
+				"index":       idx + 1,
+				"source_path": absPath(cwd, f.Source),
+				"reason":      f.Reason,
+			}, suggestionForFailure(f.Reason))
 		}
 
-		fmt.Fprintf(stdout, "完成：成功 %d，失败 %d，告警 %d\n", res.SuccessCount, res.FailureCount, res.WarningCount)
+		level := "info"
+		status := "success"
+		if res.FailureCount > 0 {
+			level = "error"
+			status = "partial_failed"
+		}
+		summaryDetails := map[string]any{
+			"status":        status,
+			"success_count": res.SuccessCount,
+			"failure_count": res.FailureCount,
+			"warning_count": res.WarningCount,
+			"duration_ms":   time.Since(start).Milliseconds(),
+			"output_paths":  res.OutputPaths,
+		}
+		if len(res.OutputPaths) == 1 {
+			summaryDetails["output_path"] = res.OutputPaths[0]
+		}
+		// 失败时给完整诊断上下文；成功默认只保留结果导向字段。
+		if res.FailureCount > 0 || flags.verbose {
+			summaryDetails["pandoc_path"] = absPath(cwd, res.PandocPath)
+			summaryDetails["pandoc_version"] = res.PandocVer
+			summaryDetails["inputs"] = absPaths(cwd, args)
+			summaryDetails["output_arg"] = absPath(cwd, flags.outputArg)
+			summaryDetails["jobs"] = flags.jobs
+		}
+		suggestion := ""
+		if res.FailureCount > 0 {
+			suggestion = "修复失败项后重试；建议先按 file_failed 事件逐项处理"
+		}
+		emitNDJSON(stdout, level, "summary", "批量转换完成", summaryDetails, suggestion)
 		if res.FailureCount > 0 {
 			return errBuildFailed
 		}
+		_ = cmd
 		return nil
 	}
 }
 
 func normalizeArgs(args []string) []string {
-	if len(args) == 0 {
-		return args
+	if len(args) == 1 && args[0] == "version" {
+		return []string{"--version"}
 	}
-	first := args[0]
-	switch first {
-	case "build", "help", "completion", "version":
-		return args
-	}
-	if first == "-h" || first == "--help" || first == "-v" || first == "--version" {
-		return args
-	}
-	if !containsPositionalInput(args) {
-		return args
-	}
-	return append([]string{"build"}, args...)
-}
-
-func containsPositionalInput(args []string) bool {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			return i+1 < len(args)
-		}
-		if arg == "--output" || arg == "--jobs" || arg == "--reference-docx" || arg == "--pandoc-path" {
-			i++
-			continue
-		}
-		if strings.HasPrefix(arg, "--output=") || strings.HasPrefix(arg, "--jobs=") || strings.HasPrefix(arg, "--reference-docx=") || strings.HasPrefix(arg, "--pandoc-path=") {
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		return true
-	}
-	return false
+	return args
 }

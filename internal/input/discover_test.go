@@ -33,5 +33,5 @@ func TestDiscoverMissingInputAsFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 0)
 	require.Len(t, fails, 1)
-	require.Equal(t, "missing.md", fails[0].Input)
+	require.Equal(t, filepath.Join(tmp, "missing.md"), fails[0].Input)
 }

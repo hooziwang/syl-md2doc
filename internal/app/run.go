@@ -36,10 +36,13 @@ func Run(opts Options) (Result, error) {
 	}
 
 	conv := opts.Converter
+	pandocInfo := convert.PandocInfo{}
 	if conv == nil {
-		if err := convert.EnsurePandocAvailable(opts.PandocPath); err != nil {
+		info, err := convert.EnsurePandocAvailable(opts.PandocPath)
+		if err != nil {
 			return Result{}, err
 		}
+		pandocInfo = info
 		conv = convert.NewPandocConverter(opts.PandocPath, opts.ReferenceDocx, opts.Verbose)
 	}
 
@@ -59,6 +62,9 @@ func Run(opts Options) (Result, error) {
 		SuccessCount: summary.SuccessCount,
 		Warnings:     make([]string, 0),
 		Failures:     make([]Failure, 0),
+		OutputPaths:  make([]string, 0),
+		PandocPath:   pandocInfo.BinaryPath,
+		PandocVer:    pandocInfo.Version,
 	}
 	result.Warnings = append(result.Warnings, discoverWarns...)
 	result.Warnings = append(result.Warnings, planWarns...)
@@ -70,7 +76,9 @@ func Run(opts Options) (Result, error) {
 		result.Warnings = append(result.Warnings, item.Warnings...)
 		if item.Error != nil {
 			result.Failures = append(result.Failures, Failure{Source: item.Task.SourcePath, Reason: item.Error.Error()})
+			continue
 		}
+		result.OutputPaths = append(result.OutputPaths, item.Task.TargetPath)
 	}
 
 	if len(tasks) == 0 && len(discoverFails) == 0 {

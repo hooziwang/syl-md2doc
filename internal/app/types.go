@@ -26,4 +26,7 @@ type Result struct {
 	WarningCount int
 	Warnings     []string
 	Failures     []Failure
+	OutputPaths  []string
+	PandocPath   string
+	PandocVer    string
 }

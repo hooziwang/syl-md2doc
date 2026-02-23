@@ -3,6 +3,7 @@ module syl-md2doc
 go 1.22
 
 require (
+	github.com/hooziwang/daddylovesyl v0.1.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.10.0
 )

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"syl-md2doc/cmd"
@@ -9,7 +8,9 @@ import (
 
 func main() {
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		if !cmd.IsReportedError(err) {
+			cmd.EmitUnhandledError(os.Stderr, err)
+		}
 		os.Exit(1)
 	}
 }

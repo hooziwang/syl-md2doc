@@ -12,8 +12,20 @@ import (
 )
 
 func TestEnsurePandocAvailableMissingBinary(t *testing.T) {
-	err := EnsurePandocAvailable(filepath.Join(t.TempDir(), "missing-pandoc"))
+	_, err := EnsurePandocAvailable(filepath.Join(t.TempDir(), "missing-pandoc"))
 	require.Error(t, err)
+}
+
+func TestEnsurePandocAvailableSuccess(t *testing.T) {
+	tmp := t.TempDir()
+	fake := filepath.Join(tmp, "fake-pandoc.sh")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'pandoc 3.1.11'; exit 0; fi\nexit 0\n"
+	require.NoError(t, os.WriteFile(fake, []byte(script), 0o755))
+
+	info, err := EnsurePandocAvailable(fake)
+	require.NoError(t, err)
+	require.Equal(t, fake, info.BinaryPath)
+	require.Equal(t, "3.1.11", info.Version)
 }
 
 func TestPandocConverterBuildCommand(t *testing.T) {
