@@ -109,6 +109,7 @@ syl-md2doc version
 ## 输出格式（AI 友好）
 
 所有运行日志均为 **NDJSON**（每行一个 JSON 对象），便于 AI 与程序解析。
+例外：`--version`/`-v` 输出为纯文本（版本信息 + daddylovesyl 横幅），与 `syl-md2ppt` 保持一致。
 
 统一字段：
 - `timestamp`: RFC3339Nano 时间戳（UTC）

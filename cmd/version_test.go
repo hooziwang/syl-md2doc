@@ -38,7 +38,6 @@ func TestPrintVersion(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	printVersion(buf)
 	out := buf.String()
-	require.Contains(t, out, "\"event\":\"version_info\"")
 	require.Contains(t, out, "syl-md2doc 版本：v9.9.9（commit: def5678，构建时间: 2026-02-23T11:00:00Z）")
 	require.Contains(t, out, banner)
 }

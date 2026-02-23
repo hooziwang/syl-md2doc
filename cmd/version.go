@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/hooziwang/daddylovesyl"
 )
@@ -23,13 +22,6 @@ func loveBanner(w io.Writer) string {
 }
 
 func printVersion(w io.Writer) {
-	emitNDJSON(w, "info", "version_info", "版本信息", map[string]any{
-		"tool":       "syl-md2doc",
-		"version":    Version,
-		"commit":     Commit,
-		"build_time": BuildTime,
-		"banner":     loveBanner(io.Discard),
-		"executable": filepath.Base("syl-md2doc"),
-		"text":       versionText(),
-	}, "")
+	fmt.Fprintln(w, versionText())
+	fmt.Fprintln(w, loveBanner(w))
 }
