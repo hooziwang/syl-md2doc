@@ -51,8 +51,37 @@ func TestPandocConverterBuildCommand(t *testing.T) {
 	require.NoError(t, res.Error)
 	require.Equal(t, "pandoc-x", gotName)
 	require.Contains(t, gotArgs, "-f")
-	require.Contains(t, gotArgs, "gfm")
+	require.Contains(t, gotArgs, "gfm+raw_attribute+hard_line_breaks")
 	require.Contains(t, gotArgs, "--reference-doc="+filepath.Join(tmp, "ref.docx"))
+}
+
+func TestPandocConverterPreservesBlankLines(t *testing.T) {
+	orig := execCommandContext
+	defer func() { execCommandContext = orig }()
+
+	var gotSourcePath string
+	var gotSourceContent string
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		if len(args) > 0 {
+			gotSourcePath = args[0]
+			bs, err := os.ReadFile(gotSourcePath)
+			require.NoError(t, err)
+			gotSourceContent = string(bs)
+		}
+		return exec.CommandContext(ctx, "sh", "-c", "exit 0")
+	}
+
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "a.md")
+	dst := filepath.Join(tmp, "a.docx")
+	require.NoError(t, os.WriteFile(src, []byte("line1\n\nline2\n"), 0o644))
+
+	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false, nil)
+	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
+	require.NoError(t, res.Error)
+
+	require.NotEqual(t, src, gotSourcePath)
+	require.Contains(t, gotSourceContent, "```{=openxml}\n<w:p/>\n```")
 }
 
 func TestPandocConverterMissingImageAsWarningWhenOutputExists(t *testing.T) {

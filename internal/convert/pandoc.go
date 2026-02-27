@@ -83,6 +83,19 @@ func (p *PandocConverter) Convert(ctx context.Context, task job.Task) job.Result
 		}()
 	}
 
+	sourcePath := task.SourcePath
+	tmpSourcePath, err := materializeSourceWithBlankParagraphs(task.SourcePath)
+	if err != nil {
+		res.Error = fmt.Errorf("预处理 Markdown 空行失败：%w", err)
+		return res
+	}
+	if tmpSourcePath != "" {
+		sourcePath = tmpSourcePath
+		defer func() {
+			_ = os.Remove(tmpSourcePath)
+		}()
+	}
+
 	luaFilterPath := ""
 	if len(p.HighlightWords) > 0 {
 		tmpFilter, err := materializeHighlightLuaFilter(p.HighlightWords)
@@ -96,7 +109,7 @@ func (p *PandocConverter) Convert(ctx context.Context, task job.Task) job.Result
 		}()
 	}
 
-	args := []string{task.SourcePath, "-f", "gfm", "-t", "docx", "-o", task.TargetPath}
+	args := []string{sourcePath, "-f", "gfm+raw_attribute+hard_line_breaks", "-t", "docx", "-o", task.TargetPath}
 	args = append(args, "--reference-doc="+refPath)
 	if luaFilterPath != "" {
 		args = append(args, "--lua-filter="+luaFilterPath)
@@ -109,7 +122,7 @@ func (p *PandocConverter) Convert(ctx context.Context, task job.Task) job.Result
 		cmd.Stdout = os.Stdout
 	}
 
-	err := cmd.Run()
+	err = cmd.Run()
 	stderrText := strings.TrimSpace(stderr.String())
 	res.Warnings = append(res.Warnings, collectWarnings(stderrText)...)
 
@@ -324,4 +337,92 @@ func luaString(s string) string {
 	replaced := strings.ReplaceAll(s, "\\", "\\\\")
 	replaced = strings.ReplaceAll(replaced, "'", "\\'")
 	return "'" + replaced + "'"
+}
+
+func materializeSourceWithBlankParagraphs(sourcePath string) (string, error) {
+	content, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return "", fmt.Errorf("读取 Markdown 源文件失败：%w", err)
+	}
+	processed, changed := preserveMarkdownBlankLines(string(content))
+	if !changed {
+		return "", nil
+	}
+	f, err := os.CreateTemp("", "syl-md2doc-source-*.md")
+	if err != nil {
+		return "", fmt.Errorf("创建临时 Markdown 文件失败：%w", err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	if _, err := f.WriteString(processed); err != nil {
+		_ = os.Remove(f.Name())
+		return "", fmt.Errorf("写入临时 Markdown 文件失败：%w", err)
+	}
+	return f.Name(), nil
+}
+
+func preserveMarkdownBlankLines(input string) (string, bool) {
+	normalized := strings.ReplaceAll(input, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	hasTrailingNewline := strings.HasSuffix(normalized, "\n")
+	if hasTrailingNewline && len(lines) > 0 {
+		lines = lines[:len(lines)-1]
+	}
+
+	var b strings.Builder
+	inFence := false
+	fenceChar := byte(0)
+	fenceLen := 0
+	changed := false
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if ch, ln, ok := fenceMarker(trimmed); ok {
+			if !inFence {
+				inFence = true
+				fenceChar = ch
+				fenceLen = ln
+			} else if ch == fenceChar && ln >= fenceLen {
+				inFence = false
+				fenceChar = 0
+				fenceLen = 0
+			}
+		}
+
+		if !inFence && trimmed == "" {
+			b.WriteString("```{=openxml}\n<w:p/>\n```")
+			changed = true
+		} else {
+			b.WriteString(line)
+		}
+		if i < len(lines)-1 {
+			b.WriteString("\n")
+		}
+	}
+	if hasTrailingNewline {
+		b.WriteString("\n")
+	}
+	return b.String(), changed
+}
+
+func fenceMarker(trimmed string) (byte, int, bool) {
+	if trimmed == "" {
+		return 0, 0, false
+	}
+	first := trimmed[0]
+	if first != '`' && first != '~' {
+		return 0, 0, false
+	}
+	count := 0
+	for i := 0; i < len(trimmed); i++ {
+		if trimmed[i] != first {
+			break
+		}
+		count++
+	}
+	if count < 3 {
+		return 0, 0, false
+	}
+	return first, count, true
 }

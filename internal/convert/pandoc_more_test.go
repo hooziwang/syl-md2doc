@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -68,4 +69,18 @@ func TestPandocConverterMkdirFail(t *testing.T) {
 
 	res := NewPandocConverter("pandoc", "", false, nil).Convert(context.Background(), job.Task{SourcePath: src, TargetPath: filepath.Join("/dev/null", "a.docx")})
 	require.Error(t, res.Error)
+}
+
+func TestPreserveMarkdownBlankLines(t *testing.T) {
+	out, changed := preserveMarkdownBlankLines("line1\n\nline2\n")
+	require.True(t, changed)
+	require.Contains(t, out, "```{=openxml}\n<w:p/>\n```")
+	require.True(t, strings.HasSuffix(out, "\n"))
+}
+
+func TestPreserveMarkdownBlankLinesSkipFencedCode(t *testing.T) {
+	in := "```go\n\nx := 1\n```\n"
+	out, changed := preserveMarkdownBlankLines(in)
+	require.False(t, changed)
+	require.Equal(t, in, out)
 }
