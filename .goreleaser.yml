@@ -59,6 +59,8 @@ brews:
     directory: Formula
     homepage: "https://github.com/hooziwang/syl-md2doc"
     description: "把 Markdown 文件批量转换为 Word(docx) 的命令行工具"
+    dependencies:
+      - name: pandoc
     commit_author:
       name: github-actions[bot]
       email: 41898282+github-actions[bot]@users.noreply.github.com
