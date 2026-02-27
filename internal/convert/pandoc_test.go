@@ -46,7 +46,7 @@ func TestPandocConverterBuildCommand(t *testing.T) {
 	dst := filepath.Join(tmp, "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("# a"), 0o644))
 
-	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false)
+	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false, nil)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 	require.Equal(t, "pandoc-x", gotName)
@@ -68,7 +68,7 @@ func TestPandocConverterMissingImageAsWarningWhenOutputExists(t *testing.T) {
 	require.NoError(t, os.WriteFile(src, []byte("![x](x.png)"), 0o644))
 	require.NoError(t, os.WriteFile(dst, []byte("dummy"), 0o644))
 
-	conv := NewPandocConverter("pandoc", "", false)
+	conv := NewPandocConverter("pandoc", "", false, nil)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 	require.NotEmpty(t, res.Warnings)
@@ -93,12 +93,44 @@ func TestPandocConverterUsesEmbeddedDefaultReferenceDocx(t *testing.T) {
 	dst := filepath.Join(tmp, "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("# a"), 0o644))
 
-	conv := NewPandocConverter("pandoc", "", false)
+	conv := NewPandocConverter("pandoc", "", false, nil)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 	require.NotEmpty(t, gotReferencePath)
 
 	_, err := os.Stat(gotReferencePath)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
+}
+
+func TestPandocConverterBuildCommandWithHighlightWords(t *testing.T) {
+	orig := execCommandContext
+	defer func() { execCommandContext = orig }()
+
+	var gotArgs []string
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotArgs = append([]string{}, args...)
+		return exec.CommandContext(ctx, "sh", "-c", "exit 0")
+	}
+
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "a.md")
+	dst := filepath.Join(tmp, "a.docx")
+	require.NoError(t, os.WriteFile(src, []byte("# a"), 0o644))
+
+	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false, []string{"Paper", "lanterns"})
+	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
+	require.NoError(t, res.Error)
+
+	luaFilter := ""
+	for _, a := range gotArgs {
+		if strings.HasPrefix(a, "--lua-filter=") {
+			luaFilter = strings.TrimPrefix(a, "--lua-filter=")
+			break
+		}
+	}
+	require.NotEmpty(t, luaFilter)
+	_, err := os.Stat(luaFilter)
 	require.Error(t, err)
 	require.True(t, os.IsNotExist(err))
 }

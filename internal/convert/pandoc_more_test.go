@@ -35,7 +35,7 @@ func TestPandocConverterNonMissingAssetError(t *testing.T) {
 	dst := filepath.Join(tmp, "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("# x"), 0o644))
 
-	res := NewPandocConverter("pandoc", "", false).Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
+	res := NewPandocConverter("pandoc", "", false, nil).Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.Error(t, res.Error)
 }
 
@@ -51,7 +51,7 @@ func TestPandocConverterMissingAssetWithoutOutputStillError(t *testing.T) {
 	dst := filepath.Join(tmp, "missing", "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("![x](lost.png)"), 0o644))
 
-	res := NewPandocConverter("pandoc", "", false).Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
+	res := NewPandocConverter("pandoc", "", false, nil).Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.Error(t, res.Error)
 }
 
@@ -66,6 +66,6 @@ func TestPandocConverterMkdirFail(t *testing.T) {
 	src := filepath.Join(tmp, "a.md")
 	require.NoError(t, os.WriteFile(src, []byte("# x"), 0o644))
 
-	res := NewPandocConverter("pandoc", "", false).Convert(context.Background(), job.Task{SourcePath: src, TargetPath: filepath.Join("/dev/null", "a.docx")})
+	res := NewPandocConverter("pandoc", "", false, nil).Convert(context.Background(), job.Task{SourcePath: src, TargetPath: filepath.Join("/dev/null", "a.docx")})
 	require.Error(t, res.Error)
 }

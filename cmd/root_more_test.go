@@ -112,6 +112,26 @@ func TestBuildWithWarningAndFailureSummary(t *testing.T) {
 	require.True(t, strings.Contains(stderr.String(), "\"event\":\"file_failed\""))
 }
 
+func TestBuildWithHighlightWordsFlag(t *testing.T) {
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "a.md")
+	require.NoError(t, os.WriteFile(src, []byte("# hi"), 0o644))
+
+	pandoc := filepath.Join(tmp, "fake-pandoc-highlight.sh")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'pandoc 3.1.11'; exit 0; fi\nout=\"\"\nhas_filter=0\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    -o) out=\"$2\"; shift 2; continue;;\n    --lua-filter=*) has_filter=1; shift; continue;;\n  esac\n  shift\ndone\nif [ \"$has_filter\" -ne 1 ]; then echo 'missing lua filter' 1>&2; exit 2; fi\nmkdir -p \"$(dirname \"$out\")\"\nprintf 'ok' > \"$out\"\nexit 0\n"
+	require.NoError(t, os.WriteFile(pandoc, []byte(script), 0o755))
+
+	outDir := filepath.Join(tmp, "out")
+	stdout := bytes.NewBuffer(nil)
+	stderr := bytes.NewBuffer(nil)
+	cmd := NewRootCmd(stdout, stderr)
+	cmd.SetArgs([]string{src, "--pandoc-path", pandoc, "--output", outDir, "-w", "paper,lanterns"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.Contains(t, stdout.String(), "\"success_count\":1")
+}
+
 func TestHelpContainsDetailedGuidance(t *testing.T) {
 	stdout := bytes.NewBuffer(nil)
 	stderr := bytes.NewBuffer(nil)
