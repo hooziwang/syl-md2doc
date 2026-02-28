@@ -46,7 +46,7 @@ func TestPandocConverterBuildCommand(t *testing.T) {
 	dst := filepath.Join(tmp, "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("# a"), 0o644))
 
-	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false, nil)
+	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 	require.Equal(t, "pandoc-x", gotName)
@@ -76,7 +76,7 @@ func TestPandocConverterPreservesBlankLines(t *testing.T) {
 	dst := filepath.Join(tmp, "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("line1\n\nline2\n"), 0o644))
 
-	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false, nil)
+	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 
@@ -97,7 +97,7 @@ func TestPandocConverterMissingImageAsWarningWhenOutputExists(t *testing.T) {
 	require.NoError(t, os.WriteFile(src, []byte("![x](x.png)"), 0o644))
 	require.NoError(t, os.WriteFile(dst, []byte("dummy"), 0o644))
 
-	conv := NewPandocConverter("pandoc", "", false, nil)
+	conv := NewPandocConverter("pandoc", "", false)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 	require.NotEmpty(t, res.Warnings)
@@ -122,7 +122,7 @@ func TestPandocConverterUsesEmbeddedDefaultReferenceDocx(t *testing.T) {
 	dst := filepath.Join(tmp, "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("# a"), 0o644))
 
-	conv := NewPandocConverter("pandoc", "", false, nil)
+	conv := NewPandocConverter("pandoc", "", false)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 	require.NotEmpty(t, gotReferencePath)
@@ -132,7 +132,7 @@ func TestPandocConverterUsesEmbeddedDefaultReferenceDocx(t *testing.T) {
 	require.True(t, os.IsNotExist(err))
 }
 
-func TestPandocConverterBuildCommandWithHighlightWords(t *testing.T) {
+func TestPandocConverterBuildCommandIncludesLuaFilter(t *testing.T) {
 	orig := execCommandContext
 	defer func() { execCommandContext = orig }()
 
@@ -147,7 +147,7 @@ func TestPandocConverterBuildCommandWithHighlightWords(t *testing.T) {
 	dst := filepath.Join(tmp, "a.docx")
 	require.NoError(t, os.WriteFile(src, []byte("# a"), 0o644))
 
-	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false, []string{"Paper", "lanterns"})
+	conv := NewPandocConverter("pandoc-x", filepath.Join(tmp, "ref.docx"), false)
 	res := conv.Convert(context.Background(), job.Task{SourcePath: src, TargetPath: dst})
 	require.NoError(t, res.Error)
 

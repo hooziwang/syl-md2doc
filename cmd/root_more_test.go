@@ -112,7 +112,7 @@ func TestBuildWithWarningAndFailureSummary(t *testing.T) {
 	require.True(t, strings.Contains(stderr.String(), "\"event\":\"file_failed\""))
 }
 
-func TestBuildWithHighlightWordsFlag(t *testing.T) {
+func TestBuildRejectHighlightWordsFlag(t *testing.T) {
 	tmp := t.TempDir()
 	src := filepath.Join(tmp, "a.md")
 	require.NoError(t, os.WriteFile(src, []byte("# hi"), 0o644))
@@ -128,8 +128,8 @@ func TestBuildWithHighlightWordsFlag(t *testing.T) {
 	cmd.SetArgs([]string{src, "--pandoc-path", pandoc, "--output", outDir, "-w", "paper,lanterns"})
 
 	err := cmd.Execute()
-	require.NoError(t, err)
-	require.Contains(t, stdout.String(), "\"success_count\":1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown shorthand flag")
 }
 
 func TestHelpContainsDetailedGuidance(t *testing.T) {

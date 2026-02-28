@@ -5,15 +5,14 @@ import (
 )
 
 type Options struct {
-	Inputs         []string
-	OutputArg      string
-	Jobs           int
-	ReferenceDocx  string
-	PandocPath     string
-	HighlightWords []string
-	CWD            string
-	Verbose        bool
-	Converter      convert.Converter
+	Inputs        []string
+	OutputArg     string
+	Jobs          int
+	ReferenceDocx string
+	PandocPath    string
+	CWD           string
+	Verbose       bool
+	Converter     convert.Converter
 }
 
 type Failure struct {

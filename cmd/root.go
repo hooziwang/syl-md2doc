@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,12 +12,11 @@ import (
 )
 
 type buildFlags struct {
-	outputArg      string
-	jobs           int
-	referenceDocx  string
-	pandocPath     string
-	highlightWords string
-	verbose        bool
+	outputArg     string
+	jobs          int
+	referenceDocx string
+	pandocPath    string
+	verbose       bool
 }
 
 const rootLongHelp = `将一个或多个 Markdown 文件批量转换为 Word(.docx)。
@@ -38,7 +36,7 @@ const rootLongHelp = `将一个或多个 Markdown 文件批量转换为 Word(.do
 1. 依赖 pandoc 完成转换。
 2. 可用 --pandoc-path 指定 pandoc 绝对路径。
 3. 建议使用较新版本 pandoc（如 >= 2.19.0）。
-4. 可用 --highlight-words/-w 指定需要高亮的词；支持英文/中文逗号、英文/中文分号、空格或换行分隔（需模板中存在 KeywordHighlight 字符样式）。`
+4. Markdown 中使用 **...** 时，输出到 Word 会同时应用加粗与 KeywordHighlight 字符样式（高亮）。`
 
 const rootExamples = `  # 单文件转换（输出到当前目录）
   syl-md2doc /abs/docs/a.md
@@ -54,9 +52,6 @@ const rootExamples = `  # 单文件转换（输出到当前目录）
 
   # 指定模板与 pandoc 路径（建议使用绝对路径）
   syl-md2doc /abs/docs/chapter --reference-docx /abs/template/ref.docx --pandoc-path /abs/bin/pandoc
-
-  # 指定需要高亮的词（支持逗号/分号/空格/换行）
-  syl-md2doc /abs/docs/a.md -w "paper,lanterns,classroom"
 
   # 查看版本（兼容两种写法）
   syl-md2doc --version
@@ -94,7 +89,6 @@ func bindBuildFlags(cmd *cobra.Command, flags *buildFlags) {
 	cmd.PersistentFlags().IntVarP(&flags.jobs, "jobs", "j", runtime.NumCPU(), "并发任务数")
 	cmd.PersistentFlags().StringVar(&flags.referenceDocx, "reference-docx", "", "pandoc 参考 docx 模板")
 	cmd.PersistentFlags().StringVar(&flags.pandocPath, "pandoc-path", "", "pandoc 可执行文件路径")
-	cmd.PersistentFlags().StringVarP(&flags.highlightWords, "highlight-words", "w", "", "需要高亮的词，支持逗号/分号/空格/换行分隔")
 	cmd.PersistentFlags().BoolVar(&flags.verbose, "verbose", false, "输出详细日志")
 }
 
@@ -120,17 +114,15 @@ func runBuild(stdout io.Writer, stderr io.Writer, flags *buildFlags, showVersion
 			return errBuildFailed
 		}
 		start := time.Now()
-		highlightWords := parseHighlightWords(flags.highlightWords)
 		if flags.verbose {
 			emitNDJSON(stdout, "info", "build_start", "开始执行 Markdown 转 docx", map[string]any{
-				"cwd":             cwd,
-				"inputs":          absPaths(cwd, args),
-				"output_arg":      absPath(cwd, flags.outputArg),
-				"jobs":            flags.jobs,
-				"reference_docx":  absPath(cwd, flags.referenceDocx),
-				"pandoc_path":     absPath(cwd, flags.pandocPath),
-				"highlight_words": highlightWords,
-				"verbose":         flags.verbose,
+				"cwd":            cwd,
+				"inputs":         absPaths(cwd, args),
+				"output_arg":     absPath(cwd, flags.outputArg),
+				"jobs":           flags.jobs,
+				"reference_docx": absPath(cwd, flags.referenceDocx),
+				"pandoc_path":    absPath(cwd, flags.pandocPath),
+				"verbose":        flags.verbose,
 			}, "")
 		}
 
@@ -142,14 +134,13 @@ func runBuild(stdout io.Writer, stderr io.Writer, flags *buildFlags, showVersion
 		}
 
 		res, err := app.Run(app.Options{
-			Inputs:         args,
-			OutputArg:      flags.outputArg,
-			Jobs:           flags.jobs,
-			ReferenceDocx:  flags.referenceDocx,
-			PandocPath:     flags.pandocPath,
-			HighlightWords: highlightWords,
-			CWD:            cwd,
-			Verbose:        flags.verbose,
+			Inputs:        args,
+			OutputArg:     flags.outputArg,
+			Jobs:          flags.jobs,
+			ReferenceDocx: flags.referenceDocx,
+			PandocPath:    flags.pandocPath,
+			CWD:           cwd,
+			Verbose:       flags.verbose,
 		})
 		if err != nil {
 			emitNDJSON(stderr, "error", "build_aborted", "转换任务启动失败", map[string]any{
@@ -225,25 +216,4 @@ func normalizeArgs(args []string) []string {
 		return []string{"--version"}
 	}
 	return args
-}
-
-func parseHighlightWords(raw string) []string {
-	normalized := strings.NewReplacer("，", ",", ";", ",", "；", ",", "\n", ",", "\r", ",").Replace(raw)
-	parts := strings.Split(normalized, ",")
-	seen := make(map[string]struct{})
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		for _, token := range strings.Fields(strings.TrimSpace(part)) {
-			word := strings.ToLower(strings.TrimSpace(token))
-			if word == "" {
-				continue
-			}
-			if _, ok := seen[word]; ok {
-				continue
-			}
-			seen[word] = struct{}{}
-			out = append(out, word)
-		}
-	}
-	return out
 }

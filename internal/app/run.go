@@ -43,7 +43,7 @@ func Run(opts Options) (Result, error) {
 			return Result{}, err
 		}
 		pandocInfo = info
-		conv = convert.NewPandocConverter(opts.PandocPath, opts.ReferenceDocx, opts.Verbose, opts.HighlightWords)
+		conv = convert.NewPandocConverter(opts.PandocPath, opts.ReferenceDocx, opts.Verbose)
 	}
 
 	sources, discoverWarns, discoverFails, err := input.Discover(opts.Inputs, cwd)

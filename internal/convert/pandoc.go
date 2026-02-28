@@ -26,18 +26,16 @@ type PandocInfo struct {
 }
 
 type PandocConverter struct {
-	PandocPath     string
-	ReferenceDocx  string
-	HighlightWords []string
-	Verbose        bool
+	PandocPath    string
+	ReferenceDocx string
+	Verbose       bool
 }
 
-func NewPandocConverter(pandocPath, referenceDocx string, verbose bool, highlightWords []string) *PandocConverter {
+func NewPandocConverter(pandocPath, referenceDocx string, verbose bool) *PandocConverter {
 	return &PandocConverter{
-		PandocPath:     pandocPath,
-		ReferenceDocx:  referenceDocx,
-		HighlightWords: normalizeHighlightWords(highlightWords),
-		Verbose:        verbose,
+		PandocPath:    pandocPath,
+		ReferenceDocx: referenceDocx,
+		Verbose:       verbose,
 	}
 }
 
@@ -96,24 +94,18 @@ func (p *PandocConverter) Convert(ctx context.Context, task job.Task) job.Result
 		}()
 	}
 
-	luaFilterPath := ""
-	if len(p.HighlightWords) > 0 {
-		tmpFilter, err := materializeHighlightLuaFilter(p.HighlightWords)
-		if err != nil {
-			res.Error = fmt.Errorf("准备高亮过滤器失败：%w", err)
-			return res
-		}
-		luaFilterPath = tmpFilter
-		defer func() {
-			_ = os.Remove(tmpFilter)
-		}()
+	luaFilterPath, err := materializeHighlightLuaFilter()
+	if err != nil {
+		res.Error = fmt.Errorf("准备高亮过滤器失败：%w", err)
+		return res
 	}
+	defer func() {
+		_ = os.Remove(luaFilterPath)
+	}()
 
 	args := []string{sourcePath, "-f", "gfm+raw_attribute+hard_line_breaks", "-t", "docx", "-o", task.TargetPath}
 	args = append(args, "--reference-doc="+refPath)
-	if luaFilterPath != "" {
-		args = append(args, "--lua-filter="+luaFilterPath)
-	}
+	args = append(args, "--lua-filter="+luaFilterPath)
 
 	cmd := execCommandContext(ctx, bin, args...)
 	stderr := bytes.NewBuffer(nil)
@@ -277,25 +269,8 @@ func materializeDefaultReferenceDocx() (string, error) {
 	return f.Name(), nil
 }
 
-func normalizeHighlightWords(words []string) []string {
-	seen := make(map[string]struct{}, len(words))
-	out := make([]string, 0, len(words))
-	for _, w := range words {
-		token := strings.ToLower(strings.TrimSpace(w))
-		if token == "" {
-			continue
-		}
-		if _, ok := seen[token]; ok {
-			continue
-		}
-		seen[token] = struct{}{}
-		out = append(out, token)
-	}
-	return out
-}
-
-func materializeHighlightLuaFilter(words []string) (string, error) {
-	content := buildHighlightLuaFilter(words)
+func materializeHighlightLuaFilter() (string, error) {
+	content := buildHighlightLuaFilter()
 	f, err := os.CreateTemp("", "syl-md2doc-highlight-*.lua")
 	if err != nil {
 		return "", fmt.Errorf("创建临时高亮过滤器失败：%w", err)
@@ -310,33 +285,12 @@ func materializeHighlightLuaFilter(words []string) (string, error) {
 	return f.Name(), nil
 }
 
-func buildHighlightLuaFilter(words []string) string {
+func buildHighlightLuaFilter() string {
 	var b strings.Builder
-	b.WriteString("local words = {\n")
-	for _, word := range normalizeHighlightWords(words) {
-		b.WriteString("  [")
-		b.WriteString(luaString(word))
-		b.WriteString("] = true,\n")
-	}
-	b.WriteString("}\n\n")
-	b.WriteString("local function normalize(token)\n")
-	b.WriteString("  local t = string.lower(token or \"\")\n")
-	b.WriteString("  t = t:gsub(\"^%p+\", \"\"):gsub(\"%p+$\", \"\")\n")
-	b.WriteString("  return t\n")
-	b.WriteString("end\n\n")
-	b.WriteString("function Str(el)\n")
-	b.WriteString("  local key = normalize(el.text)\n")
-	b.WriteString("  if key ~= \"\" and words[key] then\n")
-	b.WriteString("    return pandoc.Span({pandoc.Str(el.text)}, { [\"custom-style\"] = \"KeywordHighlight\" })\n")
-	b.WriteString("  end\n")
+	b.WriteString("function Strong(el)\n")
+	b.WriteString("  return pandoc.Span({pandoc.Strong(el.content)}, { [\"custom-style\"] = \"KeywordHighlight\" })\n")
 	b.WriteString("end\n")
 	return b.String()
-}
-
-func luaString(s string) string {
-	replaced := strings.ReplaceAll(s, "\\", "\\\\")
-	replaced = strings.ReplaceAll(replaced, "'", "\\'")
-	return "'" + replaced + "'"
 }
 
 func materializeSourceWithBlankParagraphs(sourcePath string) (string, error) {

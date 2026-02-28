@@ -76,7 +76,7 @@ scoop bucket rm hooziwang; scoop bucket add hooziwang https://github.com/hooziwa
 ### 入口（直跑）
 
 ```bash
-syl-md2doc <inputs...> [--output ...] [--jobs ...] [--reference-docx ...] [--highlight-words ...]
+syl-md2doc <inputs...> [--output ...] [--jobs ...] [--reference-docx ...]
 ```
 
 ### 版本
@@ -98,8 +98,7 @@ syl-md2doc version
 - `--reference-docx`: Word 模板文件（传给 pandoc `--reference-doc`）。
   - 未指定时，程序会自动使用内置默认模板（已编译进二进制）。
 - `--pandoc-path`: pandoc 可执行文件路径。
-- `--highlight-words, -w`: 指定需要高亮的词，支持英文/中文逗号、英文/中文分号、空格或换行分隔（如 `paper,lanterns,classroom`）。
-  - 高亮通过 pandoc Lua filter + `KeywordHighlight` 字符样式实现。
+- 高亮约定：Markdown 中的 `**...**` 在输出 Word 时会同时应用“加粗 + `KeywordHighlight` 字符样式”。
   - 若使用自定义 `--reference-docx`，请在模板中创建 `KeywordHighlight` 字符样式并设置高亮颜色。
 - `--verbose`: 打印更详细执行信息。
 
@@ -180,8 +179,8 @@ syl-md2doc /abs/docs/a.md --output /abs/out/final.docx
 # 指定 reference docx 模板
 syl-md2doc /abs/docs/chapter --reference-docx /abs/template/reference.docx
 
-# 指定关键词高亮（支持逗号/分号/空格/换行）
-syl-md2doc /abs/docs/a.md -w "paper,lanterns,classroom"
+# 使用 **...** 标注“加粗 + 高亮”
+syl-md2doc /abs/docs/a.md
 
 # 指定 pandoc 路径 + 详细日志
 syl-md2doc /abs/docs/chapter --pandoc-path /abs/bin/pandoc --verbose
